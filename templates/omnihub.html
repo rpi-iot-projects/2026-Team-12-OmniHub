@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Climate Dashboard</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gradient-to-br from-slate-900 to-slate-800 text-white min-h-screen flex items-center justify-center py-10">
+
+<div class="w-full max-w-5xl p-6">
+    <h1 class="text-4xl font-bold mb-10 text-center">OmniHub Dashboard</h1>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-8">
+        <div class="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20">
+            <h2 class="text-xl opacity-70 mb-2">Current Temperature</h2>
+            <div class="text-5xl font-bold"><span id="temp">--</span>°C</div>
+        </div>
+        <div class="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20">
+            <h2 class="text-xl opacity-70 mb-2">Current Humidity</h2>
+            <div class="text-5xl font-bold"><span id="hum">--</span>%</div>
+        </div>
+    </div>
+
+    <div class="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20 mb-8">
+        <h2 class="text-xl mb-4">Environmental Trends (Last 50 Readings)</h2>
+        <div class="h-64">
+            <canvas id="climateChart"></canvas>
+        </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6">
+        <div class="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20">
+            <h2 class="text-xl mb-4">Set Targets</h2>
+            <div class="space-y-3">
+                <input id="targetTemp" type="number" placeholder="Temp °C" class="w-full p-2 rounded bg-slate-800 border border-slate-600">
+                <input id="targetHum" type="number" placeholder="Humidity %" class="w-full p-2 rounded bg-slate-800 border border-slate-600">
+                <select id="targetLight" class="w-full p-2 rounded bg-slate-800 border border-slate-600">
+                    <option value="on">Light On</option>
+                    <option value="off">Light Off</option>
+                </select>
+                <button onclick="sendTargets()" class="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded transition">Save Targets</button>
+                <p class="text-xs opacity-50">Current: <span id="currentTarget">Not Set</span></p>
+            </div>
+        </div>
+
+        <div class="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20">
+            <h2 class="text-xl mb-4">Manual Overrides</h2>
+            <div class="space-y-4">
+                <div class="flex justify-between"><span>Humidifier</span><input type="checkbox" onchange="socket.emit('toggle_humidifier_override', {manual: this.checked, state: this.checked})"></div>
+                <div class="flex justify-between"><span>Fan</span><input type="checkbox" onchange="socket.emit('toggle_fan_override', {manual: this.checked, state: this.checked})"></div>
+                <div class="flex justify-between"><span>Light</span><input type="checkbox" onchange="socket.emit('toggle_light', this.checked)"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="text-center mt-10">
+        <span id="connectionDot" class="inline-block w-3 h-3 bg-red-500 rounded-full mr-2"></span>
+        <span id="connectionText">Disconnected</span>
+    </div>
+</div>
+
+<script>
+    const socket = io();
+    const ctx = document.getElementById('climateChart').getContext('2d');
+    
+    // Initialize Chart
+    let climateChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Temp (°C)',
+                borderColor: '#f87171',
+                data: [],
+                tension: 0.3
+            }, {
+                label: 'Humidity (%)',
+                borderColor: '#60a5fa',
+                data: [],
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { display: false } },
+                y: { grid: { color: 'rgba(255,255,255,0.1)' } }
+            },
+            plugins: { legend: { labels: { color: 'white' } } }
+        }
+    });
+
+    socket.on("history_data", (data) => {
+        climateChart.data.labels = data.map(d => d.time);
+        climateChart.data.datasets[0].data = data.map(d => d.temp);
+        climateChart.data.datasets[1].data = data.map(d => d.hum);
+        climateChart.update();
+    });
+
+    socket.on("sensor_update", (data) => {
+        document.getElementById("temp").innerText = data.temperature ?? "--";
+        document.getElementById("hum").innerText = data.humidity ?? "--";
+        // To keep graph real-time, you could push data here, but it's handled via the 10min DB refresh/connect.
+    });
+
+    function sendTargets() {
+        socket.emit("set_targets", {
+            temperature: document.getElementById("targetTemp").value,
+            humidity: document.getElementById("targetHum").value,
+            light_state: document.getElementById("targetLight").value
+        });
+    }
+
+    socket.on("connect", () => {
+        document.getElementById("connectionDot").className = "inline-block w-3 h-3 bg-green-500 rounded-full mr-2";
+        document.getElementById("connectionText").innerText = "Connected";
+    });
+</script>
+</body>
+</html>
